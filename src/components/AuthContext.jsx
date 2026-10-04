@@ -1,29 +1,29 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import { api } from '../api';
+import { createContext, useContext, useState } from 'react';
+import { api, clearSession } from '../api';
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [account, setAccount] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Lê a sessão salva de forma síncrona (evita um frame "deslogado") e tolera JSON corrompido.
+function readSession() {
+  try {
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user'));
+    const account = JSON.parse(localStorage.getItem('account'));
+    if (token && user && account) return { user, account };
+  } catch {
+    clearSession();
+  }
+  return { user: null, account: null };
+}
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const savedAccount = localStorage.getItem('account');
-    if (savedUser && savedAccount) {
-      setUser(JSON.parse(savedUser));
-      setAccount(JSON.parse(savedAccount));
-    }
-    setLoading(false);
-  }, []);
+export function AuthProvider({ children }) {
+  const [session, setSession] = useState(readSession);
 
   function persistSession(data) {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     localStorage.setItem('account', JSON.stringify(data.account));
-    setUser(data.user);
-    setAccount(data.account);
+    setSession({ user: data.user, account: data.account });
   }
 
   async function login(email, password) {
@@ -39,20 +39,18 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('account');
-    setUser(null);
-    setAccount(null);
+    clearSession();
+    setSession({ user: null, account: null });
   }
 
   return (
-    <AuthContext.Provider value={{ user, account, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user: session.user, account: session.account, loading: false, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth precisa ser usado dentro de <AuthProvider>');
